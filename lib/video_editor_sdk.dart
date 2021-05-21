@@ -32,10 +32,10 @@ class VESDK {
   /// your `pubspec.yaml` file.
   /// Once finished, the editor either returns a [VideoEditorResult]
   /// or `null` if the editor was dismissed without exporting the video.
-  static Future<VideoEditorResult> openEditor(
-      {String video,
-      Configuration configuration,
-      Map<String, dynamic> serialization}) async {
+  static Future<VideoEditorResult?> openEditor(
+      {String? video,
+      Configuration? configuration,
+      Map<String, dynamic>? serialization}) async {
     final result = await _channel.invokeMethod('openEditor', <String, dynamic>{
       'video': video,
       'configuration': configuration?.toJson(),
@@ -57,11 +57,11 @@ class VideoEditorResult {
   VideoEditorResult._({this.video, this.hasChanges, this.serialization});
 
   /// The source of the edited video.
-  final String video;
+  final String? video;
 
   /// Indicating whether the video has been
   /// changed at all.
-  final bool hasChanges;
+  final bool? hasChanges;
 
   /// The serialization contains the applied changes. This is only
   /// returned in case `Configuration.export.serialization.enabled` is
@@ -83,8 +83,8 @@ class VideoEditorResult {
 
   /// Converts the [VideoEditorResult] for JSON parsing.
   Map<String, dynamic> toJson() => {
-        "video": video == null ? null : video,
-        "hasChanges": hasChanges == null ? null : hasChanges,
-        "serialization": serialization == null ? null : serialization
+        "video": video ?? null ,
+        "hasChanges": hasChanges ?? null,
+        "serialization": serialization ?? null
       };
 }
