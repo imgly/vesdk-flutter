@@ -75,11 +75,14 @@ public class FlutterVESDK: FlutterIMGLY, FlutterPlugin, VideoEditViewControllerD
                 photoEditModel = deserializationResult.model ?? photoEditModel
             }
 
-            if let configuration = configurationData {
-                videoEditViewController = VideoEditViewController(videoAsset: video, configuration: configuration, photoEditModel: photoEditModel)
-            } else {
-                videoEditViewController = VideoEditViewController(videoAsset: video, photoEditModel: photoEditModel)
-            }
+//            if let configuration = configurationData {
+//                videoEditViewController = VideoEditViewController(videoAsset: video, configuration: configuration, photoEditModel: photoEditModel)
+//            } else {
+//                videoEditViewController = VideoEditViewController(videoAsset: video, photoEditModel: photoEditModel)
+//            }
+            
+            videoEditViewController = VideoEditViewController(videoAsset: video, configuration: self.getTripleConfiguration(configuration: configuration), photoEditModel: photoEditModel)
+            
             videoEditViewController.modalPresentationStyle = .fullScreen
             videoEditViewController.delegate = self
             return videoEditViewController
@@ -89,6 +92,21 @@ public class FlutterVESDK: FlutterIMGLY, FlutterPlugin, VideoEditViewControllerD
         }, configurationData: configuration, serialization: serialization)
     }
 
+    ///Added for triple mobile app ui improvements
+    private func getTripleConfiguration(configuration: IMGLYDictionary?) -> Configuration{
+        let tripleConfig = Configuration.init { builder in
+            if let preconfigured = configuration{
+                try? builder.configure(from: preconfigured)
+            }
+            builder.configureVideoEditViewController { options in
+                options.applyButtonConfigurationClosure = { button in
+                    button.setImage(UIImage.init(named: "ic_check"), for: .normal)
+                }
+            }
+        }
+        return tripleConfig
+    }
+    
     // MARK: - Licensing
 
     /// Unlocks the license from a url.
@@ -144,6 +162,7 @@ extension FlutterVESDK {
             self.result?(res)
         }
     }
+    
 
     /// Called if the `VideoEditViewController` failed to export the video.
     /// - Parameter videoEditViewController: The `VideoEditViewController` that failed to export the video.
