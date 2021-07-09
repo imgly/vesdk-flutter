@@ -4,6 +4,7 @@ import android.app.Activity
 import androidx.annotation.NonNull
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.util.Log
 
 import io.flutter.embedding.engine.plugins.FlutterPlugin
@@ -21,6 +22,7 @@ import ly.img.android.pesdk.utils.UriHelper
 import ly.img.android.sdk.config.*
 import ly.img.android.pesdk.backend.encoder.Encoder
 import ly.img.android.pesdk.backend.model.EditorSDKResult
+import ly.img.android.pesdk.backend.model.state.VideoCompositionSettings
 import ly.img.android.serializer._3.IMGLYFileWriter
 
 import org.json.JSONObject
@@ -33,22 +35,21 @@ class FlutterVESDK: FlutterIMGLY() {
 
   companion object {
     // This number must be unique. It is public to allow client code to change it if the same value is used elsewhere.
-    var EDITOR_RESULT_ID = 29065
+    var EDITOR_RESULT_ID = 29064
   }
 
-  override fun onAttachedToEngine(@NonNull flutterPluginBinding: FlutterPlugin.FlutterPluginBinding) {
-    super.onAttachedToEngine(flutterPluginBinding)
+  override fun onAttachedToEngine(@NonNull binding: FlutterPlugin.FlutterPluginBinding) {
+    super.onAttachedToEngine(binding)
 
-    channel = MethodChannel(flutterPluginBinding.binaryMessenger, "video_editor_sdk")
+    channel = MethodChannel(binding.binaryMessenger, "video_editor_sdk")
     channel.setMethodCallHandler(this)
-    IMGLY.initSDK(flutterPluginBinding.applicationContext)
+    IMGLY.initSDK(binding.applicationContext)
     IMGLY.authorize()
   }
 
   override fun onMethodCall(@NonNull call: MethodCall, @NonNull result: Result) {
     if (call.method == "openEditor") {
       var config = call.argument<MutableMap<String, Any>>("configuration")
-      var video: String? = null
       val serialization = call.argument<String>("serialization")
 
       if (config != null) {
@@ -56,16 +57,22 @@ class FlutterVESDK: FlutterIMGLY() {
       }
       config = config as? HashMap<String, Any>
 
-      val videoValues = call.argument<String>("video")
-      if (videoValues != null) {
-        video = EmbeddedAsset(videoValues).resolvedURI
-      }
+      val video = call.argument<MutableMap<String, Any>>("video")
+      if (video != null) {
+        val videosList = video["videos"] as ArrayList<String>?
+        val videoSource = video["video"] as String?
+        val size = video["size"] as? MutableMap<String, Double>
 
-      if(video != null) {
         this.result = result
-        this.present(asset = video, config = config, serialization = serialization)
+
+        if (videoSource != null) {
+          this.present(videoSource.let { EmbeddedAsset(it).resolvedURI }, config, serialization)
+        } else {
+          val videos = videosList?.mapNotNull { EmbeddedAsset(it).resolvedURI }
+          this.present(videos, config, serialization, size)
+        }
       } else {
-        result.error("Invalid video location.", "The video can not be nil.", null)
+        result.error("VESDK", "The video must not be null", null)
       }
     } else if (call.method == "unlock") {
       val license = call.argument<String>("license")
@@ -84,30 +91,99 @@ class FlutterVESDK: FlutterIMGLY() {
    * @param serialization The serialization to load into the editor if any.
    */
   override fun present(asset: String, config: HashMap<String, Any>?, serialization: String?) {
-    val settingsList = VideoEditorSettingsList()
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR2) {
+      val settingsList = VideoEditorSettingsList()
 
-    currentSettingsList = settingsList
-    currentConfig = ConfigLoader.readFrom(config ?: mapOf()).also {
-      it.applyOn(settingsList)
-    }
+      currentSettingsList = settingsList
+      currentConfig = ConfigLoader.readFrom(config ?: mapOf()).also {
+        it.applyOn(settingsList)
+      }
 
-    settingsList.configure<LoadSettings> { loadSettings ->
-      asset.also {
-        if (it.startsWith("data:")) {
-          loadSettings.source = UriHelper.createFromBase64String(it.substringAfter("base64,"))
-        } else {
-          val potentialFile = continueWithExceptions { File(it) }
-          if (potentialFile?.exists() == true) {
-            loadSettings.source = Uri.fromFile(potentialFile)
-          } else {
-            loadSettings.source = ConfigLoader.parseUri(it)
-          }
+      settingsList.configure<LoadSettings> { loadSettings ->
+        asset.also {
+          loadSettings.source = retrieveURI(it)
         }
       }
-    }
 
-    readSerialisation(settingsList, serialization, false)
-    startEditor(settingsList, EDITOR_RESULT_ID)
+      readSerialisation(settingsList, serialization, false)
+      startEditor(settingsList, EDITOR_RESULT_ID)
+    } else {
+      result?.error("VESDK", "The video editor is only available in Android 4.3 and later.", null)
+    }
+  }
+
+  /**
+   * Configures and presents the editor.
+   *
+   * @param videos The video sources as *List<String>* which should be loaded into the editor.
+   * @param config The *Configuration* to configure the editor with as if any.
+   * @param serialization The serialization to load into the editor if any.
+   */
+  private fun present(videos: List<String>?, config: HashMap<String, Any>?, serialization: String?, size: Map<String, Any>?) {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR2) {
+      val settingsList = VideoEditorSettingsList()
+      var source = resolveSize(size)
+      currentSettingsList = settingsList
+
+      currentConfig = ConfigLoader.readFrom(config ?: mapOf()).also {
+        it.applyOn(settingsList)
+      }
+
+      if (videos != null && videos.count() > 0) {
+        if (source == null) {
+          if (size != null) {
+            result?.error("VESDK", "Invalid video size: width and height must be greater than zero.", null)
+            return
+          }
+          val video = videos.first()
+          source = retrieveURI(video)
+        }
+
+        settingsList.configure<VideoCompositionSettings> { loadSettings ->
+          videos.forEach {
+            val resolvedSource = retrieveURI(it)
+            loadSettings.addCompositionPart(VideoCompositionSettings.VideoPart(resolvedSource))
+          }
+        }
+      } else {
+        if (source == null) {
+          result?.error("VESDK", "A video composition without assets must have a specific size.", null)
+          return
+        }
+      }
+
+      settingsList.configure<LoadSettings> {
+        it.source = source
+      }
+
+      readSerialisation(settingsList, serialization, false)
+      startEditor(settingsList, EDITOR_RESULT_ID)
+    } else {
+      result?.error("VESDK", "The video editor is only available in Android 4.3 and later.", null)
+      return
+    }
+  }
+
+  private fun retrieveURI(source: String) : Uri {
+    return if (source.startsWith("data:")) {
+      UriHelper.createFromBase64String(source.substringAfter("base64,"))
+    } else {
+      val potentialFile = continueWithExceptions { File(source) }
+      if (potentialFile?.exists() == true) {
+        Uri.fromFile(potentialFile)
+      } else {
+        ConfigLoader.parseUri(source)
+      }
+    }
+  }
+
+  private fun resolveSize(size: Map<String, Any>?) : Uri? {
+    val height = size?.get("height") as? Double ?: 0.0
+    val width = size?.get("width") as? Double ?: 0.0
+    if (height == 0.0 || width == 0.0) {
+      return null
+    }
+    return LoadSettings.compositionSource(height.toInt(), width.toInt(), 60)
   }
 
   /**
@@ -160,7 +236,7 @@ class FlutterVESDK: FlutterIMGLY() {
                 uri.toString()
               }
               SerializationExportType.OBJECT -> {
-                jsonToMap(JSONObject(IMGLYFileWriter(settingsList).writeJsonAsString())) as Any?
+                jsonToMap(JSONObject(IMGLYFileWriter(settingsList).writeJsonAsString()))
               }
             }
           }

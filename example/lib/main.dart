@@ -42,14 +42,10 @@ class _MyAppState extends State<MyApp> {
     return configuration;
   }
 
-  @override
-  void initState() {
-    super.initState();
-  }
-
   void presentEditor() async {
     final result = await VESDK.openEditor(
-        video: "assets/Skater.mp4", configuration: createConfiguration());
+        Video.composition(videos: ["assets/Skater.mp4"]),
+        configuration: createConfiguration());
     print(result?.toJson());
   }
 

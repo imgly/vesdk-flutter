@@ -34,23 +34,53 @@ public class FlutterVESDK: FlutterIMGLY, FlutterPlugin, VideoEditViewControllerD
         if call.method == "openEditor" {
             let configuration = arguments["configuration"] as? IMGLYDictionary
             let serialization = arguments["serialization"] as? IMGLYDictionary
-            self.result = result
+            let videoDictionary = arguments["video"] as? IMGLYDictionary
 
-            var video: Video?
-            if let assetObject = arguments["video"] as? String,
-               let assetURL = EmbeddedAsset(from: assetObject).resolvedURL, let url = URL(string: assetURL) {
-                video = Video(url: url)
+            if videoDictionary != nil {
+                self.result = result
+                let (size, valid) = convertSize(from: videoDictionary?["size"] as? IMGLYDictionary)
+                var video: Video?
+
+                if let videos = videoDictionary?["videos"] as? [String] {
+                    let resolvedAssets = videos.compactMap { EmbeddedAsset(from: $0).resolvedURL }
+                    let assets = resolvedAssets.compactMap{ URL(string: $0) }.map{ AVURLAsset(url: $0) }
+
+                    if assets.count > 0 {
+                        if let videoSize = size {
+                            video = Video(assets: assets, size: videoSize)
+                        } else {
+                            if valid == true {
+                                video = Video(assets: assets)
+                            } else {
+                                result(FlutterError(code: "Invalid video size: width and height must be greater than zero.", message: nil, details: nil))
+                                return
+                            }
+                        }
+                    } else {
+                        if let videoSize = size {
+                            video = Video(size: videoSize)
+                        } else {
+                            result(FlutterError(code: "A video composition without assets must have a specific size.", message: nil, details: nil))
+                            return
+                        }
+                    }
+                } else if let source = videoDictionary?["video"] as? String {
+                    if let resolvedSource = EmbeddedAsset(from: source).resolvedURL, let url = URL(string: resolvedSource) {
+                        video = Video(asset: AVURLAsset(url: url))
+                    }
+                } else if let videoSize = size {
+                    video = Video(size: videoSize)
+                }
+                guard let finalVideo = video else {
+                    result(FlutterError(code: "Could not load video.", message: nil, details: nil))
+                    return
+                }
+
+                self.present(video: finalVideo, configuration: configuration, serialization: serialization)
             } else {
-                result(FlutterError(code: "Could not load video.", message: nil, details: nil))
+                result(FlutterError(code: "The video must not be null.", message: nil, details: nil))
                 return
             }
-
-            guard let finalVideo = video else {
-                result(FlutterError(code: "Could not load video.", message: nil, details: nil))
-                return
-            }
-
-            self.present(video: finalVideo, configuration: configuration, serialization: serialization)
         } else if call.method == "unlock" {
             guard let license = arguments["license"] as? String else { return }
             self.result = result
@@ -101,6 +131,25 @@ public class FlutterVESDK: FlutterIMGLY, FlutterPlugin, VideoEditViewControllerD
             } catch let error {
                 self.handleLicenseError(with: error as NSError)
             }
+        }
+    }
+
+    // MARK: - Helpers
+
+    /// Converts a given dictionary into a `CGSize`.
+    /// - Parameter dictionary: The `IMGLYDictionary` to retrieve the size from.
+    /// - Returns: The converted `CGSize` if any and a `bool` indicating whether size is valid.
+    private func convertSize(from dictionary: IMGLYDictionary?) -> (CGSize?, Bool) {
+        if let validDictionary = dictionary {
+            guard let height = validDictionary["height"] as? Double, let width = validDictionary["width"] as? Double else {
+                return (nil, false)
+            }
+            if height > 0 && width > 0 {
+                return (CGSize(width: width, height: height), true)
+            }
+            return (nil, false)
+        } else {
+            return (nil, true)
         }
     }
 }

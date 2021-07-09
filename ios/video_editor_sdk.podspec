@@ -21,7 +21,7 @@ The official Flutter plugin for VideoEditor SDK. Integrate the video editor into
   s.source_files = 'Classes/**/*'
   s.dependency 'Flutter'
   s.platform = :ios, '9.0'
-  s.dependency 'imglyKit', '~> 10.21'
+  s.dependency 'imglyKit', '~> 10.24'
   s.dependency 'imgly_sdk'
 
   # Flutter.framework does not contain a i386 slice.
