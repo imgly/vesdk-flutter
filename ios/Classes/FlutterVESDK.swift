@@ -7,6 +7,16 @@ import AVFoundation
 @available(iOS 9.0, *)
 public class FlutterVESDK: FlutterIMGLY, FlutterPlugin, VideoEditViewControllerDelegate {
 
+    // MARK: - Typealias
+
+    /// A closure to modify a new `VideoEditViewController` before it is presented on screen.
+    public typealias VESDKWillPresentBlock = (_ videoEditViewController: VideoEditViewController) -> Void
+
+    // MARK: - Properties
+
+    /// Set this closure to modify a new `VideoEditViewController` before it is presented on screen.
+    public static var willPresentVideoEditViewController: VESDKWillPresentBlock?
+
     // MARK: - Flutter Channel
 
     /// Registers for the channel in order to communicate with the
@@ -106,14 +116,16 @@ public class FlutterVESDK: FlutterIMGLY, FlutterPlugin, VideoEditViewControllerD
             }
 
             if let configuration = configurationData {
-                videoEditViewController = VideoEditViewController(videoAsset: video, configuration: configuration, photoEditModel: photoEditModel)
+                videoEditViewController = VideoEditViewController.makeVideoEditViewController(videoAsset: video, configuration: configuration, photoEditModel: photoEditModel)
             } else {
-                videoEditViewController = VideoEditViewController(videoAsset: video, photoEditModel: photoEditModel)
+                videoEditViewController = VideoEditViewController.makeVideoEditViewController(videoAsset: video, photoEditModel: photoEditModel)
             }
             videoEditViewController.modalPresentationStyle = .fullScreen
             videoEditViewController.delegate = self
-            return videoEditViewController
 
+            FlutterVESDK.willPresentVideoEditViewController?(videoEditViewController)
+
+            return videoEditViewController
         }, utiBlock: { (configurationData) -> CFString in
             return (configurationData?.videoEditViewControllerOptions.videoContainerFormatUTI ?? AVFileType.mp4 as CFString)
         }, configurationData: configuration, serialization: serialization)

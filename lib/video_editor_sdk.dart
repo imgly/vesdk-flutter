@@ -30,8 +30,7 @@ class VESDK {
   /// by re-applying all modifications to the video.
   /// Once finished, the editor either returns a [VideoEditorResult]
   /// or `null` if the editor was dismissed without exporting the video.
-  static Future<VideoEditorResult?> openEditor(
-      Video video,
+  static Future<VideoEditorResult?> openEditor(Video video,
       {Configuration? configuration,
       Map<String, dynamic>? serialization}) async {
     final result = await _channel.invokeMethod('openEditor', <String, dynamic>{
@@ -91,8 +90,11 @@ class Video {
     if (_video != null) {
       map.addAll({"video": _video});
     } else {
-     map.addAll({"videos": _videos,  "size":
-     size == null ? null : {"width": size.width, "height": size.height}});
+      map.addAll({
+        "videos": _videos,
+        "size":
+            size == null ? null : {"width": size.width, "height": size.height}
+      });
     }
     return map..removeWhere((key, value) => value == null);
   }

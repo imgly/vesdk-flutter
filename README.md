@@ -1,6 +1,6 @@
 <p align="center">
-  <a href="https://www.photoeditorsdk.com/?utm_campaign=Projects&utm_source=Github&utm_medium=VESDK&utm_content=Flutter">
-    <img src="https://static.photoeditorsdk.com/vesdk/vesdk-logo-s.svg" alt="VideoEditor SDK Logo"/>
+  <a href="https://img.ly/video-sdk?utm_campaign=Projects&utm_source=Github&utm_medium=VESDK&utm_content=Flutter">
+    <img src="https://img.ly/static/logos/VE.SDK_Logo.svg" alt="VideoEditor SDK Logo"/>
   </a>
 </p>
 <p align="center">
@@ -52,16 +52,16 @@ flutter pub get
    ```groovy
    buildscript {
        repositories {
-           jcenter()
+           mavenCentral()
            maven { url "https://artifactory.img.ly/artifactory/imgly" }
        }
        dependencies {
            classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:1.4.10"
-           classpath 'ly.img.android.sdk:plugin:8.3.1'
+           classpath 'ly.img.android.sdk:plugin:8.3.4'
        }
    }
    ```
-   In order to update VideoEditor SDK for Android replace the version string `8.3.1` with a [newer release](https://github.com/imgly/pesdk-android-demo/releases).
+   In order to update VideoEditor SDK for Android replace the version string `8.3.4` with a [newer release](https://github.com/imgly/pesdk-android-demo/releases).
 
 3. Configure VideoEditor SDK for Android by opening the `android/app/build.gradle` file  (**not** `android/build.gradle`) and adding the following lines under `apply plugin: "com.android.application"`:
    ```groovy
@@ -139,7 +139,7 @@ Please see our [example project](./example) which demonstrates how to use the Fl
 
 ## License Terms
 
-Make sure you have a [commercial license](https://account.photoeditorsdk.com/pricing?product=vesdk&?utm_campaign=Projects&utm_source=Github&utm_medium=VESDK&utm_content=Flutter) for VideoEditor SDK before releasing your app.
+Make sure you have a [commercial license](https://img.ly/pricing?product=vesdk&?utm_campaign=Projects&utm_source=Github&utm_medium=VESDK&utm_content=Flutter) for VideoEditor SDK before releasing your app.
 A commercial license is required for any app or service that has any form of monetization: This includes free apps with in-app purchases or ad supported applications. Please contact us if you want to purchase the commercial license.
 
 ## Support and License

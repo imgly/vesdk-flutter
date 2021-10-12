@@ -1,5 +1,7 @@
+
 # OSX
 .DS_Store
+.dart_tool/
 
 # Xcode
 #
@@ -23,15 +25,10 @@ project.xcworkspace
 # Dart
 .dart_tool/
 .packages
+.pub/
 build/
 pubspec.lock
 doc/api/
-
-# fastlane
-fastlane/report.xml
-fastlane/screenshots
-fastlane/Preview.html
-fastlane/test_output
 
 # CocoaPods
 Pods

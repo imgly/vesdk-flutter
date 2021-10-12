@@ -17,8 +17,7 @@ class _MyAppState extends State<MyApp> {
     final flutterSticker = Sticker(
         "example_sticker_logos_flutter", "Flutter", "assets/Flutter-logo.png");
     final imglySticker = Sticker(
-        "example_sticker_logos_imgly", "img.ly", "assets/imgly-Logo.png",
-        tintMode: TintMode.solid);
+        "example_sticker_logos_imgly", "img.ly", "assets/IgorSticker.png");
 
     /// A completely custom category.
     final logos = StickerCategory(
@@ -43,8 +42,7 @@ class _MyAppState extends State<MyApp> {
   }
 
   void presentEditor() async {
-    final result = await VESDK.openEditor(
-        Video.composition(videos: ["assets/Skater.mp4"]),
+    final result = await VESDK.openEditor(Video("assets/Skater.mp4"),
         configuration: createConfiguration());
     print(result?.toJson());
   }
