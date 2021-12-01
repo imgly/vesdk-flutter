@@ -183,7 +183,7 @@ class FlutterVESDK: FlutterIMGLY() {
     if (height == 0.0 || width == 0.0) {
       return null
     }
-    return LoadSettings.compositionSource(height.toInt(), width.toInt(), 60)
+    return LoadSettings.compositionSource(width.toInt(), height.toInt(), 60)
   }
 
   /**
