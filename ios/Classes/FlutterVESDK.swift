@@ -37,8 +37,8 @@ public class FlutterVESDK: FlutterIMGLY, FlutterPlugin, VideoEditViewControllerD
         guard let arguments = call.arguments as? IMGLYDictionary else { return }
 
         if self.result != nil {
-            self.result?(FlutterError(code: "multiple_requests", message: "Cancelled due to multiple requests.", details: nil))
-            self.result = nil
+            result(FlutterError(code: "Multiple requests.", message: "Cancelled due to multiple requests.", details: nil))
+            return
         }
 
         if call.method == "openEditor" {
@@ -183,6 +183,7 @@ extension FlutterVESDK {
             if self.serializationType == IMGLYConstants.kExportTypeFileURL {
                 guard let exportURL = self.serializationFile else {
                     self.result?(FlutterError(code: "Serialization failed.", message: "The URL must not be nil.", details: nil))
+                    self.result = nil
                     return
                 }
                 do {
@@ -190,12 +191,14 @@ extension FlutterVESDK {
                     serialization = self.serializationFile?.absoluteString
                 } catch let error {
                     self.result?(FlutterError(code: "Serialization failed.", message: error.localizedDescription, details: error))
+                    self.result = nil
                 }
             } else if self.serializationType == IMGLYConstants.kExportTypeObject {
                 do {
                     serialization = try JSONSerialization.jsonObject(with: serializationData, options: .init(rawValue: 0))
                 } catch let error {
                     self.result?(FlutterError(code: "Serialization failed.", message: error.localizedDescription, details: error))
+                    self.result = nil
                 }
             }
         }
@@ -203,6 +206,7 @@ extension FlutterVESDK {
         self.dismiss(mediaEditViewController: videoEditViewController, animated: true) {
             let res: [String: Any?] = ["video": url?.absoluteString, "hasChanges": videoEditViewController.hasChanges, "serialization": serialization]
             self.result?(res)
+            self.result = nil
         }
     }
 
@@ -211,6 +215,7 @@ extension FlutterVESDK {
     public func videoEditViewControllerDidFailToGenerateVideo(_ videoEditViewController: VideoEditViewController) {
         self.dismiss(mediaEditViewController: videoEditViewController, animated: true) {
             self.result?(FlutterError(code: "editor_failed", message: "The editor did fail to generate the video.", details: nil))
+            self.result = nil
         }
     }
 
@@ -219,6 +224,7 @@ extension FlutterVESDK {
     public func videoEditViewControllerDidCancel(_ videoEditViewController: VideoEditViewController) {
         self.dismiss(mediaEditViewController: videoEditViewController, animated: true) {
             self.result?(nil)
+            self.result = nil
         }
     }
 }

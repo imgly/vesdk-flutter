@@ -29,6 +29,7 @@ import org.json.JSONObject
 import java.io.File
 
 import ly.img.flutter.imgly_sdk.FlutterIMGLY
+import java.util.UUID
 
 /** FlutterVESDK */
 class FlutterVESDK: FlutterIMGLY() {
@@ -48,6 +49,11 @@ class FlutterVESDK: FlutterIMGLY() {
   }
 
   override fun onMethodCall(@NonNull call: MethodCall, @NonNull result: Result) {
+    if (this.result != null) {
+      result?.error("Multiple requests.", "Cancelled due to multiple requests.", null)
+      return
+    }
+
     if (call.method == "openEditor") {
       var config = call.argument<MutableMap<String, Any>>("configuration")
       val serialization = call.argument<String>("serialization")
@@ -109,6 +115,7 @@ class FlutterVESDK: FlutterIMGLY() {
       startEditor(settingsList, EDITOR_RESULT_ID)
     } else {
       result?.error("VESDK", "The video editor is only available in Android 4.3 and later.", null)
+      this.result = null
     }
   }
 
@@ -133,6 +140,7 @@ class FlutterVESDK: FlutterIMGLY() {
         if (source == null) {
           if (size != null) {
             result?.error("VESDK", "Invalid video size: width and height must be greater than zero.", null)
+            this.result = null
             return
           }
           val video = videos.first()
@@ -148,6 +156,7 @@ class FlutterVESDK: FlutterIMGLY() {
       } else {
         if (source == null) {
           result?.error("VESDK", "A video composition without assets must have a specific size.", null)
+          this.result = null
           return
         }
       }
@@ -160,6 +169,7 @@ class FlutterVESDK: FlutterIMGLY() {
       startEditor(settingsList, EDITOR_RESULT_ID)
     } else {
       result?.error("VESDK", "The video editor is only available in Android 4.3 and later.", null)
+      this.result = null
       return
     }
   }
@@ -196,8 +206,10 @@ class FlutterVESDK: FlutterIMGLY() {
       VESDK.initSDKWithLicenseData(license)
       IMGLY.authorize()
       this.result?.success(null)
+      this.result = null
     } catch (e: AuthorizationException) {
       this.result?.error("Invalid license", "The license must be valid.", e.message)
+      this.result = null
     }
   }
 
@@ -211,6 +223,7 @@ class FlutterVESDK: FlutterIMGLY() {
     if (resultCode == Activity.RESULT_CANCELED && requestCode == EDITOR_RESULT_ID) {
       currentActivity?.runOnUiThread {
         this.result?.success(null)
+        this.result = null
       }
       return true
     } else if (resultCode == Activity.RESULT_OK && requestCode == EDITOR_RESULT_ID) {
@@ -228,8 +241,8 @@ class FlutterVESDK: FlutterIMGLY() {
             when (serializationConfig.exportType) {
               SerializationExportType.FILE_URL -> {
                 val uri = serializationConfig.filename?.let {
-                  Uri.parse(it)
-                } ?: Uri.fromFile(File.createTempFile("serialization", ".json"))
+                  Uri.parse("$it.json")
+                } ?: Uri.fromFile(File.createTempFile("serialization-" + UUID.randomUUID().toString(), ".json"))
                 Encoder.createOutputStream(uri).use { outputStream ->
                   IMGLYFileWriter(settingsList).writeJson(outputStream)
                 }
@@ -254,6 +267,7 @@ class FlutterVESDK: FlutterIMGLY() {
       map["serialization"] = serialization
       currentActivity?.runOnUiThread {
         this.result?.success(map)
+        this.result = null
       }
       return true
     }

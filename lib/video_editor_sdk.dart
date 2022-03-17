@@ -54,12 +54,19 @@ class Video {
   /// The [video] source should either be a full path, an URI
   /// or if it is an asset the relative path as specified in
   /// your `pubspec.yaml` file.
+  /// Remote resources are not optimized and therefore should be downloaded
+  /// in advance and then passed to the editor as local resources.
   Video(String video)
       : _video = video,
         _videos = null,
         _size = null;
 
   /// Creates a new video composition with multiple videos.
+  /// The [videos] each should either be a full path, an URI
+  /// or if it is an asset the relative path as specified in
+  /// your `pubspec.yaml` file.
+  /// Remote resources are not optimized and therefore should be downloaded
+  /// in advance and then passed to the editor as local resources.
   /// The [size] overrides the natural dimensions of the video(s) passed to the
   /// editor. All videos will be fitted to the [size] aspect by adding
   /// black bars on the left and right side or top and bottom.
@@ -75,9 +82,19 @@ class Video {
         _video = null;
 
   /// The video source.
+  /// The source should either be a full path, an URI
+  /// or if it is an asset the relative path as specified in
+  /// your `pubspec.yaml` file.
+  /// Remote resources are not optimized and therefore should be downloaded
+  /// in advance and then passed to the editor as local resources.
   final String? _video;
 
   /// The sources for the video composition.
+  /// The sources should each either be a full path, an URI
+  /// or if it is an asset the relative path as specified in
+  /// your `pubspec.yaml` file.
+  /// Remote resources are not optimized and therefore should be downloaded
+  /// in advance and then passed to the editor as local resources.
   final List<String>? _videos;
 
   /// The [Size] of the composition.
