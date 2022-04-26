@@ -97,26 +97,19 @@ class FlutterVESDK: FlutterIMGLY() {
    * @param serialization The serialization to load into the editor if any.
    */
   override fun present(asset: String, config: HashMap<String, Any>?, serialization: String?) {
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR2) {
-      val settingsList = VideoEditorSettingsList()
+    val configuration = ConfigLoader.readFrom(config ?: mapOf())
+    val settingsList = VideoEditorSettingsList(configuration.export?.serialization?.enabled == true)
+    configuration.applyOn(settingsList)
+    currentConfig = configuration
 
-      currentSettingsList = settingsList
-      currentConfig = ConfigLoader.readFrom(config ?: mapOf()).also {
-        it.applyOn(settingsList)
+    settingsList.configure<LoadSettings> { loadSettings ->
+      asset.also {
+        loadSettings.source = retrieveURI(it)
       }
-
-      settingsList.configure<LoadSettings> { loadSettings ->
-        asset.also {
-          loadSettings.source = retrieveURI(it)
-        }
-      }
-
-      readSerialisation(settingsList, serialization, false)
-      startEditor(settingsList, EDITOR_RESULT_ID)
-    } else {
-      result?.error("VESDK", "The video editor is only available in Android 4.3 and later.", null)
-      this.result = null
     }
+
+    readSerialisation(settingsList, serialization, false)
+    startEditor(settingsList, EDITOR_RESULT_ID)
   }
 
   /**
@@ -127,51 +120,43 @@ class FlutterVESDK: FlutterIMGLY() {
    * @param serialization The serialization to load into the editor if any.
    */
   private fun present(videos: List<String>?, config: HashMap<String, Any>?, serialization: String?, size: Map<String, Any>?) {
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR2) {
-      val settingsList = VideoEditorSettingsList()
-      var source = resolveSize(size)
-      currentSettingsList = settingsList
+    val configuration = ConfigLoader.readFrom(config ?: mapOf())
+    val settingsList = VideoEditorSettingsList(configuration.export?.serialization?.enabled == true)
+    configuration.applyOn(settingsList)
+    currentConfig = configuration
 
-      currentConfig = ConfigLoader.readFrom(config ?: mapOf()).also {
-        it.applyOn(settingsList)
-      }
-
-      if (videos != null && videos.count() > 0) {
-        if (source == null) {
-          if (size != null) {
-            result?.error("VESDK", "Invalid video size: width and height must be greater than zero.", null)
-            this.result = null
-            return
-          }
-          val video = videos.first()
-          source = retrieveURI(video)
-        }
-
-        settingsList.configure<VideoCompositionSettings> { loadSettings ->
-          videos.forEach {
-            val resolvedSource = retrieveURI(it)
-            loadSettings.addCompositionPart(VideoCompositionSettings.VideoPart(resolvedSource))
-          }
-        }
-      } else {
-        if (source == null) {
-          result?.error("VESDK", "A video composition without assets must have a specific size.", null)
+    var source = resolveSize(size)
+    if (videos != null && videos.count() > 0) {
+      if (source == null) {
+        if (size != null) {
+          result?.error("VESDK", "Invalid video size: width and height must be greater than zero.", null)
           this.result = null
           return
         }
+        val video = videos.first()
+        source = retrieveURI(video)
       }
 
-      settingsList.configure<LoadSettings> {
-        it.source = source
+      settingsList.configure<VideoCompositionSettings> { loadSettings ->
+        videos.forEach {
+          val resolvedSource = retrieveURI(it)
+          loadSettings.addCompositionPart(VideoCompositionSettings.VideoPart(resolvedSource))
+        }
       }
-
-      readSerialisation(settingsList, serialization, false)
-      startEditor(settingsList, EDITOR_RESULT_ID)
     } else {
-      result?.error("VESDK", "The video editor is only available in Android 4.3 and later.", null)
-      this.result = null
-      return
+      if (source == null) {
+        result?.error("VESDK", "A video composition without assets must have a specific size.", null)
+        this.result = null
+        return
+      }
     }
+
+    settingsList.configure<LoadSettings> {
+      it.source = source
+    }
+
+    readSerialisation(settingsList, serialization, false)
+    startEditor(settingsList, EDITOR_RESULT_ID)
   }
 
   private fun retrieveURI(source: String) : Uri {
@@ -227,18 +212,19 @@ class FlutterVESDK: FlutterIMGLY() {
       }
       return true
     } else if (resultCode == Activity.RESULT_OK && requestCode == EDITOR_RESULT_ID) {
-      val settingsList = intentData.settingsList
       val serializationConfig = currentConfig?.export?.serialization
       val resultUri = intentData.resultUri
       val sourceUri = intentData.sourceUri
 
-      val serialization: Any? = if (serializationConfig?.enabled == true) {
+      var serialization: Any? = null
+      if (serializationConfig?.enabled == true) {
+        val settingsList = intentData.settingsList
         skipIfNotExists {
           settingsList.let { settingsList ->
             if (serializationConfig.embedSourceImage == true) {
               Log.i("ImglySDK", "EmbedSourceImage is currently not supported by the Android SDK")
             }
-            when (serializationConfig.exportType) {
+            serialization = when (serializationConfig.exportType) {
               SerializationExportType.FILE_URL -> {
                 val uri = serializationConfig.filename?.let {
                   Uri.parse("$it.json")
@@ -253,12 +239,10 @@ class FlutterVESDK: FlutterIMGLY() {
               }
             }
           }
+          settingsList.release()
         } ?: run {
           Log.i("ImglySDK", "You need to include 'backend:serializer' Module, to use serialisation!")
-          null
         }
-      } else {
-        null
       }
 
       val map = mutableMapOf<String, Any?>()
