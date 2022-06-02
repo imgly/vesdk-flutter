@@ -34,6 +34,11 @@ class _MyAppState extends State<MyApp> {
       Sticker.existing("imgly_sticker_shapes_badge_01"),
       Sticker.existing("imgly_sticker_shapes_arrow_02")
     ]);
+
+    /// A GIPHY sticker category.
+    // final giphy = StickerCategory.giphy(
+    //     GiphyStickerProvider("YOUR-GIPHY-API-KEY"));
+
     var categories = <StickerCategory>[logos, emoticons, shapes];
     final configuration = Configuration(
         sticker:

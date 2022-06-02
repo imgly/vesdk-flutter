@@ -42,6 +42,7 @@ imglyConfig {
         include 'ui:video-library'
         include 'ui:video-composition'
         include 'ui:audio-composition'
+        include 'ui:giphy-sticker'
 
         // This module is big, remove the serializer if you don't need that feature.
         include 'backend:serializer'

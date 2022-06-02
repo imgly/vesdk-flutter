@@ -4,7 +4,6 @@ import android.app.Activity
 import androidx.annotation.NonNull
 import android.content.Intent
 import android.net.Uri
-import android.os.Build
 import android.util.Log
 
 import io.flutter.embedding.engine.plugins.FlutterPlugin
@@ -23,6 +22,7 @@ import ly.img.android.sdk.config.*
 import ly.img.android.pesdk.backend.encoder.Encoder
 import ly.img.android.pesdk.backend.model.EditorSDKResult
 import ly.img.android.pesdk.backend.model.state.VideoCompositionSettings
+import ly.img.android.pesdk.utils.ThreadUtils
 import ly.img.android.serializer._3.IMGLYFileWriter
 
 import org.json.JSONObject
@@ -50,7 +50,7 @@ class FlutterVESDK: FlutterIMGLY() {
 
   override fun onMethodCall(@NonNull call: MethodCall, @NonNull result: Result) {
     if (this.result != null) {
-      result?.error("Multiple requests.", "Cancelled due to multiple requests.", null)
+      result.error("Multiple requests.", "Cancelled due to multiple requests.", null)
       return
     }
 
@@ -78,7 +78,7 @@ class FlutterVESDK: FlutterIMGLY() {
           this.present(videos, config, serialization, size)
         }
       } else {
-        result.error("VESDK", "The video must not be null", null)
+        result.error("VE.SDK", "The video must not be null", null)
       }
     } else if (call.method == "unlock") {
       val license = call.argument<String>("license")
@@ -129,7 +129,7 @@ class FlutterVESDK: FlutterIMGLY() {
     if (videos != null && videos.count() > 0) {
       if (source == null) {
         if (size != null) {
-          result?.error("VESDK", "Invalid video size: width and height must be greater than zero.", null)
+          result?.error("VE.SDK", "Invalid video size: width and height must be greater than zero.", null)
           this.result = null
           return
         }
@@ -145,7 +145,7 @@ class FlutterVESDK: FlutterIMGLY() {
       }
     } else {
       if (source == null) {
-        result?.error("VESDK", "A video composition without assets must have a specific size.", null)
+        result?.error("VE.SDK", "A video composition without assets must have a specific size.", null)
         this.result = null
         return
       }
@@ -154,6 +154,8 @@ class FlutterVESDK: FlutterIMGLY() {
     settingsList.configure<LoadSettings> {
       it.source = source
     }
+
+    applyTheme(settingsList, configuration.theme)
 
     readSerialisation(settingsList, serialization, false)
     startEditor(settingsList, EDITOR_RESULT_ID)
@@ -178,7 +180,7 @@ class FlutterVESDK: FlutterIMGLY() {
     if (height == 0.0 || width == 0.0) {
       return null
     }
-    return LoadSettings.compositionSource(height.toInt(), width.toInt(), 60)
+    return LoadSettings.compositionSource(width.toInt(), height.toInt(), 60)
   }
 
   /**
@@ -193,7 +195,7 @@ class FlutterVESDK: FlutterIMGLY() {
       this.result?.success(null)
       this.result = null
     } catch (e: AuthorizationException) {
-      this.result?.error("Invalid license", "The license must be valid.", e.message)
+      this.result?.error("VE.SDK", "The license is invalid.", e.message)
       this.result = null
     }
   }
@@ -212,46 +214,45 @@ class FlutterVESDK: FlutterIMGLY() {
       }
       return true
     } else if (resultCode == Activity.RESULT_OK && requestCode == EDITOR_RESULT_ID) {
-      val serializationConfig = currentConfig?.export?.serialization
-      val resultUri = intentData.resultUri
-      val sourceUri = intentData.sourceUri
+      ThreadUtils.runAsync {
+        val serializationConfig = currentConfig?.export?.serialization
+        val resultUri = intentData.resultUri
+        val sourceUri = intentData.sourceUri
 
-      var serialization: Any? = null
-      if (serializationConfig?.enabled == true) {
-        val settingsList = intentData.settingsList
-        skipIfNotExists {
-          settingsList.let { settingsList ->
-            if (serializationConfig.embedSourceImage == true) {
-              Log.i("ImglySDK", "EmbedSourceImage is currently not supported by the Android SDK")
-            }
-            serialization = when (serializationConfig.exportType) {
-              SerializationExportType.FILE_URL -> {
-                val uri = serializationConfig.filename?.let {
-                  Uri.parse("$it.json")
-                } ?: Uri.fromFile(File.createTempFile("serialization-" + UUID.randomUUID().toString(), ".json"))
-                Encoder.createOutputStream(uri).use { outputStream ->
-                  IMGLYFileWriter(settingsList).writeJson(outputStream)
+        var serialization: Any? = null
+        if (serializationConfig?.enabled == true) {
+          val settingsList = intentData.settingsList
+          skipIfNotExists {
+            settingsList.let { settingsList ->
+              serialization = when (serializationConfig.exportType) {
+                SerializationExportType.FILE_URL -> {
+                  val uri = serializationConfig.filename?.let {
+                    Uri.parse("$it.json")
+                  } ?: Uri.fromFile(File.createTempFile("serialization-" + UUID.randomUUID().toString(), ".json"))
+                  Encoder.createOutputStream(uri).use { outputStream ->
+                    IMGLYFileWriter(settingsList).writeJson(outputStream)
+                  }
+                  uri.toString()
                 }
-                uri.toString()
-              }
-              SerializationExportType.OBJECT -> {
-                jsonToMap(JSONObject(IMGLYFileWriter(settingsList).writeJsonAsString()))
+                SerializationExportType.OBJECT -> {
+                  jsonToMap(JSONObject(IMGLYFileWriter(settingsList).writeJsonAsString()))
+                }
               }
             }
+            settingsList.release()
+          } ?: run {
+            Log.e("IMG.LY SDK", "You need to include 'backend:serializer' Module, to use serialisation!")
           }
-          settingsList.release()
-        } ?: run {
-          Log.i("ImglySDK", "You need to include 'backend:serializer' Module, to use serialisation!")
         }
-      }
 
-      val map = mutableMapOf<String, Any?>()
-      map["video"] = resultUri.toString()
-      map["hasChanges"] = (sourceUri?.path != resultUri?.path)
-      map["serialization"] = serialization
-      currentActivity?.runOnUiThread {
-        this.result?.success(map)
-        this.result = null
+        val map = mutableMapOf<String, Any?>()
+        map["video"] = resultUri.toString()
+        map["hasChanges"] = (sourceUri?.path != resultUri?.path)
+        map["serialization"] = serialization
+        currentActivity?.runOnUiThread {
+          this.result?.success(map)
+          this.result = null
+        }
       }
       return true
     }
