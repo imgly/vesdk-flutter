@@ -17,13 +17,20 @@
 
 # Flutter plugin for VideoEditor SDK
 
+## System requirements
+
+- Flutter: 1.20.0
+- Dart: 2.12.0
+- iOS: 13
+- Android: 5 (SDK 21)
+
 ## Getting started
 
 Add the plugin package to the `pubspec.yaml` file in your project:
 
 ```yaml
 dependencies:
-  video_editor_sdk: ^2.5.0
+  video_editor_sdk: ^2.6.0
 ```
 
 Install the new dependency:
@@ -187,6 +194,7 @@ Run with --stacktrace option to get the stack trace. Run with --info or --debug 
 
            include 'backend:sticker-animated'
            include 'backend:sticker-smart'
+           include 'backend:background-removal'
        }
    }
    ```

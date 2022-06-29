@@ -4,7 +4,7 @@ import ImglyKit
 import imgly_sdk
 import AVFoundation
 
-@available(iOS 9.0, *)
+@available(iOS 13.0, *)
 public class FlutterVESDK: FlutterIMGLY, FlutterPlugin, VideoEditViewControllerDelegate {
 
     // MARK: - Typealias
@@ -111,7 +111,7 @@ public class FlutterVESDK: FlutterIMGLY, FlutterPlugin, VideoEditViewControllerD
             var videoEditViewController: VideoEditViewController
 
             if let _serialization = serializationData {
-                let deserializationResult = Deserializer.deserialize(data: _serialization, imageDimensions: video.size, assetCatalog: configurationData?.assetCatalog ?? .shared)
+                let deserializationResult = Deserializer.deserialize(data: _serialization, imageDimensions: video.size, assetCatalog: configurationData?.assetCatalog ?? .defaultItems)
                 photoEditModel = deserializationResult.model ?? photoEditModel
             }
 
@@ -164,47 +164,52 @@ public class FlutterVESDK: FlutterIMGLY, FlutterPlugin, VideoEditViewControllerD
             return (nil, true)
         }
     }
+
+    private func handleError(_ videoEditViewController: VideoEditViewController, code: String, message: String?, details: Any?) {
+        self.dismiss(mediaEditViewController: videoEditViewController, animated: true) {
+            self.result?(FlutterError(code: code, message: message, details: details))
+            self.result = nil
+        }
+    }
 }
 
-@available(iOS 9.0, *)
+@available(iOS 13.0, *)
 extension FlutterVESDK {
-
     /// Called if the video has been successfully exported.
     /// - Parameter videoEditViewController: The instance of `VideoEditViewController` that finished exporting
-    /// - Parameter url: The `URL` where the video has been exported to.
-    public func videoEditViewController(_ videoEditViewController: VideoEditViewController, didFinishWithVideoAt url: URL?) {
-
+    /// - Parameter result: The `VideoEditorResult` from the editor.
+    public func videoEditViewControllerDidFinish(_ videoEditViewController: VideoEditViewController, result: VideoEditorResult) {
         var serialization: Any?
 
         if self.serializationEnabled == true {
             guard let serializationData = videoEditViewController.serializedSettings else {
+                self.handleError(videoEditViewController, code: "Serialization failed.", message: "No serialization data found.", details: nil)
                 return
             }
             if self.serializationType == IMGLYConstants.kExportTypeFileURL {
                 guard let exportURL = self.serializationFile else {
-                    self.result?(FlutterError(code: "Serialization failed.", message: "The URL must not be nil.", details: nil))
-                    self.result = nil
+                    self.handleError(videoEditViewController, code: "Serialization failed.", message: "The URL must not be nil.", details: nil)
                     return
                 }
                 do {
                     try serializationData.IMGLYwriteToUrl(exportURL, andCreateDirectoryIfNeeded: true)
                     serialization = self.serializationFile?.absoluteString
                 } catch let error {
-                    self.result?(FlutterError(code: "Serialization failed.", message: error.localizedDescription, details: error))
-                    self.result = nil
+                    self.handleError(videoEditViewController, code: "Serialization failed.", message: error.localizedDescription, details: error)
+                    return
                 }
             } else if self.serializationType == IMGLYConstants.kExportTypeObject {
                 do {
                     serialization = try JSONSerialization.jsonObject(with: serializationData, options: .init(rawValue: 0))
                 } catch let error {
-                    self.result?(FlutterError(code: "Serialization failed.", message: error.localizedDescription, details: error))
-                    self.result = nil
+                    self.handleError(videoEditViewController, code: "Serialization failed.", message: error.localizedDescription, details: error)
+                    return
                 }
             }
         }
 
         self.dismiss(mediaEditViewController: videoEditViewController, animated: true) {
-            let res: [String: Any?] = ["video": url?.absoluteString, "hasChanges": videoEditViewController.hasChanges, "serialization": serialization]
+            let res: [String: Any?] = ["video": result.output.url.absoluteString, "hasChanges": result.status == .renderedWithChanges, "serialization": serialization]
             self.result?(res)
             self.result = nil
         }
@@ -212,11 +217,9 @@ extension FlutterVESDK {
 
     /// Called if the `VideoEditViewController` failed to export the video.
     /// - Parameter videoEditViewController: The `VideoEditViewController` that failed to export the video.
-    public func videoEditViewControllerDidFailToGenerateVideo(_ videoEditViewController: VideoEditViewController) {
-        self.dismiss(mediaEditViewController: videoEditViewController, animated: true) {
-            self.result?(FlutterError(code: "editor_failed", message: "The editor did fail to generate the video.", details: nil))
-            self.result = nil
-        }
+    /// - Parameter error: The `VideoEditorError` that caused the failure.
+    public func videoEditViewControllerDidFail(_ videoEditViewController: VideoEditViewController, error: VideoEditorError) {
+        self.handleError(videoEditViewController, code: "Editor failed", message: "The editor did fail to generate the video.", details: error)
     }
 
     /// Called if the `VideoEditViewController` was cancelled.
