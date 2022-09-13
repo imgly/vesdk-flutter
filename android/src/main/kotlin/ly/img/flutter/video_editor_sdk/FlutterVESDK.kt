@@ -108,6 +108,8 @@ class FlutterVESDK: FlutterIMGLY() {
       }
     }
 
+    applyTheme(settingsList, configuration.theme)
+
     readSerialisation(settingsList, serialization, false)
     startEditor(settingsList, EDITOR_RESULT_ID)
   }
