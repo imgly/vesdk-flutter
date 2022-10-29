@@ -18,7 +18,7 @@ class VESDK {
   /// to include one license for each platform with the same name, but where
   /// the iOS license has `.ios` as its file extension and the
   /// Android license has `.android` as its file extension.
-  static void unlockWithLicense(String path) async {
+  static Future<void> unlockWithLicense(String path) async {
     await _channel.invokeMethod('unlock', <String, dynamic>{'license': path});
   }
 
