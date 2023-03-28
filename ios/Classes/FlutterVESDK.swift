@@ -17,6 +17,9 @@ public class FlutterVESDK: FlutterIMGLY, FlutterPlugin, VideoEditViewControllerD
     /// Set this closure to modify a new `VideoEditViewController` before it is presented on screen.
     public static var willPresentVideoEditViewController: VESDKWillPresentBlock?
 
+    /// The `UUID` of the current editor instance.
+    private var uuid: UUID?
+
     // MARK: - Flutter Channel
 
     /// Registers for the channel in order to communicate with the
@@ -42,69 +45,112 @@ public class FlutterVESDK: FlutterIMGLY, FlutterPlugin, VideoEditViewControllerD
         }
 
         if call.method == "openEditor" {
-            let configuration = arguments["configuration"] as? IMGLYDictionary
-            let serialization = arguments["serialization"] as? IMGLYDictionary
-            let videoDictionary = arguments["video"] as? IMGLYDictionary
-
-            if videoDictionary != nil {
-                self.result = result
-                let (size, valid) = convertSize(from: videoDictionary?["size"] as? IMGLYDictionary)
-                var video: Video?
-
-                if let videos = videoDictionary?["videos"] as? [String] {
-                    let resolvedAssets = videos.compactMap { EmbeddedAsset(from: $0).resolvedURL }
-                    let assets = resolvedAssets.compactMap{ URL(string: $0) }.map{ AVURLAsset(url: $0) }
-
-                    if assets.count > 0 {
-                        if let videoSize = size {
-                            video = Video(assets: assets, size: videoSize)
-                        } else {
-                            if valid == true {
-                                video = Video(assets: assets)
-                            } else {
-                                result(FlutterError(code: "Invalid video size: width and height must be greater than zero.", message: nil, details: nil))
-                                return
-                            }
-                        }
-                    } else {
-                        if let videoSize = size {
-                            video = Video(size: videoSize)
-                        } else {
-                            result(FlutterError(code: "A video composition without assets must have a specific size.", message: nil, details: nil))
-                            return
-                        }
-                    }
-                } else if let source = videoDictionary?["video"] as? String {
-                    if let resolvedSource = EmbeddedAsset(from: source).resolvedURL, let url = URL(string: resolvedSource) {
-                        video = Video(asset: AVURLAsset(url: url))
-                    }
-                } else if let videoSize = size {
-                    video = Video(size: videoSize)
-                }
-                guard let finalVideo = video else {
-                    result(FlutterError(code: "Could not load video.", message: nil, details: nil))
-                    return
-                }
-
-                self.present(video: finalVideo, configuration: configuration, serialization: serialization)
-            } else {
-                result(FlutterError(code: "The video must not be null.", message: nil, details: nil))
-                return
-            }
+            self.openEditor(arguments: arguments, result: result)
         } else if call.method == "unlock" {
             guard let license = arguments["license"] as? String else { return }
             self.result = result
             self.unlockWithLicense(with: license)
+        } else if call.method == "release" {
+            result(nil)
+        } else {
+            result(FlutterMethodNotImplemented)
         }
     }
 
     // MARK: - Presenting editor
+
+    /// Presents the video editor if available.
+    ///
+    /// - Parameter arguments: The arguments from the method channel request.
+    /// - Parameter result: The `FlutterResult` used to communicate with the Dart layer.
+    private func openEditor(arguments: IMGLYDictionary, result: @escaping FlutterResult) {
+        let configuration = arguments["configuration"] as? IMGLYDictionary
+        let serialization = arguments["serialization"] as? IMGLYDictionary
+        let videoDictionary = arguments["video"] as? IMGLYDictionary
+
+        if videoDictionary != nil {
+            self.result = result
+            let (size, valid) = convertSize(from: videoDictionary?["size"] as? IMGLYDictionary)
+            var video: Video?
+
+            if let videos = videoDictionary?["videos"] as? [String] {
+                let resolvedAssets = videos.compactMap { EmbeddedAsset(from: $0).resolvedURL }
+                let assets = resolvedAssets.compactMap{ URL(string: $0) }.map{ VideoSegment(url: $0) }
+
+                if assets.count > 0 {
+                    if let videoSize = size {
+                        video = Video(segments: assets, size: videoSize)
+                    } else {
+                        if valid == true {
+                            video = Video(segments: assets)
+                        } else {
+                            result(FlutterError(code: "Invalid video size: width and height must be greater than zero.", message: nil, details: nil))
+                            return
+                        }
+                    }
+                } else {
+                    if let videoSize = size {
+                        video = Video(size: videoSize)
+                    } else {
+                        result(FlutterError(code: "A video composition without assets must have a specific size.", message: nil, details: nil))
+                        return
+                    }
+                }
+            } else if let segments = videoDictionary?["segments"] as? [IMGLYDictionary] {
+                var resolvedSegments: [VideoSegment] = []
+                segments.forEach { segment in
+                    guard let videoURI = segment["videoUri"] as? String, let resolvedURI = EmbeddedAsset(from: videoURI).resolvedURL, let resolvedURL = URL(string: resolvedURI) else { return }
+                    let startTime = segment["startTime"] as? Double
+                    let endTime = segment["endTime"] as? Double
+                    let resolvedSegment = VideoSegment(url: resolvedURL, startTime: startTime, endTime: endTime)
+                    resolvedSegments.append(resolvedSegment)
+                }
+
+                if resolvedSegments.count > 0 {
+                    if let videoSize = size {
+                        video = Video(segments: resolvedSegments, size: videoSize)
+                    } else {
+                        if valid == true {
+                            video = Video(segments: resolvedSegments)
+                        } else {
+                            result(FlutterError(code: "Invalid video size: width and height must be greater than zero.", message: nil, details: nil))
+                            return
+                        }
+                    }
+                } else {
+                    if let videoSize = size {
+                        video = Video(size: videoSize)
+                    } else {
+                        result(FlutterError(code: "A video composition without assets must have a specific size.", message: nil, details: nil))
+                        return
+                    }
+                }
+
+            } else if let source = videoDictionary?["video"] as? String {
+                if let resolvedSource = EmbeddedAsset(from: source).resolvedURL, let url = URL(string: resolvedSource) {
+                    video = Video(segment: VideoSegment(url: url))
+                }
+            } else if let videoSize = size {
+                video = Video(size: videoSize)
+            }
+            guard let finalVideo = video else {
+                result(FlutterError(code: "Could not load video.", message: nil, details: nil))
+                return
+            }
+
+            self.present(video: finalVideo, configuration: configuration, serialization: serialization)
+        } else {
+            result(FlutterError(code: "The video must not be null.", message: nil, details: nil))
+            return
+        }
+    }
 
     /// Presents an instance of `VideoEditViewController`.
     /// - Parameter video: The `Video` to initialize the editor with.
     /// - Parameter configuration: The configuration for the editor in JSON format.
     /// - Parameter serialization: The serialization as `IMGLYDictionary`.
     private func present(video: Video, configuration: IMGLYDictionary?, serialization: IMGLYDictionary?) {
+        self.uuid = UUID()
         self.present(mediaEditViewControllerBlock: { (configurationData, serializationData) -> MediaEditViewController? in
 
             var photoEditModel = PhotoEditModel()
@@ -165,10 +211,34 @@ public class FlutterVESDK: FlutterIMGLY, FlutterPlugin, VideoEditViewControllerD
         }
     }
 
+    /// Handles an occuring error and closes the editor.
+    /// - Parameter videoEditViewController: The `VideoEditViewController` that caused the error.
+    /// - Parameter code: The error code.
+    /// - Parameter message: The error message.
+    /// - Parameter details: The error details.
     private func handleError(_ videoEditViewController: VideoEditViewController, code: String, message: String?, details: Any?) {
         self.dismiss(mediaEditViewController: videoEditViewController, animated: true) {
             self.result?(FlutterError(code: code, message: message, details: details))
             self.result = nil
+            self.uuid = nil
+        }
+    }
+
+    /// Serializes the given video segments.
+    ///
+    /// - Parameter segments: The `VideoSegment`s to serialize.
+    /// - Returns: The serialized segments as `IMGLYDictionary`.
+    private func serializeSegments(segments: [VideoSegment]) -> [IMGLYDictionary] {
+        return segments.compactMap { segment in
+            var result: IMGLYDictionary = ["videoUri": segment.url.absoluteString]
+
+            if (segment.startTime != nil) {
+                result["startTime"] = segment.startTime
+            }
+            if (segment.endTime != nil) {
+                result["endTime"] = segment.endTime
+            }
+            return result
         }
     }
 }
@@ -209,9 +279,14 @@ extension FlutterVESDK {
         }
 
         self.dismiss(mediaEditViewController: videoEditViewController, animated: true) {
-            let res: [String: Any?] = ["video": result.output.url.absoluteString, "hasChanges": result.status == .renderedWithChanges, "serialization": serialization]
+            let serializedSegments = self.serializeSegments(segments: result.task.video.segments)
+            var res: [String: Any?] = ["video": result.output.url.absoluteString, "hasChanges": result.status == .renderedWithChanges, "serialization": serialization, "videoSize": ["height": result.task.video.size.height, "width": result.task.video.size.width], "identifier": self.uuid?.uuidString]
+            if self.serializeVideoSegments {
+                res["segments"] = serializedSegments
+            }
             self.result?(res)
             self.result = nil
+            self.uuid = nil
         }
     }
 
@@ -228,6 +303,7 @@ extension FlutterVESDK {
         self.dismiss(mediaEditViewController: videoEditViewController, animated: true) {
             self.result?(nil)
             self.result = nil
+            self.uuid = nil
         }
     }
 }

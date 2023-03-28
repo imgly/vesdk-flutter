@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:ui';
 
 import 'package:flutter/services.dart';
 import 'package:imgly_sdk/imgly_sdk.dart';
@@ -42,10 +41,49 @@ class VESDK {
               ? serialization
               : jsonEncode(serialization)
     });
+    final segmentsEnabled = configuration?.export?.video?.segments == true;
+    final release = segmentsEnabled && Platform.isAndroid
+        ? () => _channel.invokeMethod(
+            'release', <String, dynamic>{"identifier": result["identifier"]})
+        : () => null;
     return result == null
         ? null
-        : VideoEditorResult._fromJson(Map<String, dynamic>.from(result));
+        : VideoEditorResult._fromJson(Map<String, dynamic>.from(result),
+            release: release);
   }
+}
+
+/// A [VideoSegment] is part of a video composition and can be loaded into
+/// the VideoEditor SDK editor.
+class VideoSegment {
+  /// Creates a new [VideoSegment].
+  ///
+  /// The [videoUri] source should either be a full path, an URI
+  /// or if it is an asset the relative path as specified in
+  /// your `pubspec.yaml` file.
+  /// Remote resources are not optimized and therefore should be downloaded
+  /// in advance and then passed to the editor as local resources.
+  /// The [startTime] represents the start time of the video segment within the
+  /// composition (in seconds) and the [endTime] the end time of the segment.
+  VideoSegment(this.videoUri, {this.startTime, this.endTime});
+
+  /// A URI for the video segment.
+  final String videoUri;
+
+  /// The start time in seconds.
+  final double? startTime;
+
+  /// The end time in seconds.
+  final double? endTime;
+
+  /// Converts the [VideoSegment] for JSON parsing.
+  Map<String, dynamic> toJson() =>
+      {"videoUri": videoUri, "startTime": startTime, "endTime": endTime};
+
+  /// Creates a [VideoSegment] from the [json] map.
+  factory VideoSegment.fromJson(Map<String, dynamic> json) =>
+      VideoSegment(json["videoUri"],
+          startTime: json["startTime"], endTime: json["endTime"]);
 }
 
 /// A [Video] can be loaded into the VideoEditor SDK editor.
@@ -59,6 +97,7 @@ class Video {
   Video(String video)
       : _video = video,
         _videos = null,
+        _segments = null,
         _size = null;
 
   /// Creates a new video composition with multiple videos.
@@ -79,7 +118,27 @@ class Video {
   Video.composition({List<String>? videos, Size? size})
       : _videos = videos,
         _size = size,
+        _segments = null,
         _video = null;
+
+  /// Creates a new video composition with multiple [VideoSegment]s.
+  /// The [size] overrides the natural dimensions of the video(s) passed to the
+  /// editor. All videos will be fitted to the [size] aspect by adding
+  /// black bars on the left and right side or top and bottom.
+  /// If [segments] is set to `null`, a valid [size] must be given
+  /// which will initialize the editor with an empty composition.
+  ///
+  /// ### Licensing:
+  /// In order to use this feature, you need to unlock the video composition
+  /// feature for your license first.
+  Video.fromSegments({List<VideoSegment>? segments, Size? size})
+      : _segments = segments,
+        _videos = null,
+        _size = size,
+        _video = null;
+
+  /// The segments of the video composition.
+  final List<VideoSegment>? _segments;
 
   /// The video source.
   /// The source should either be a full path, an URI
@@ -106,9 +165,15 @@ class Video {
     final map = Map<String, dynamic>.from({});
     if (_video != null) {
       map.addAll({"video": _video});
-    } else {
+    } else if (_videos != null) {
       map.addAll({
         "videos": _videos,
+        "size":
+            size == null ? null : {"width": size.width, "height": size.height}
+      });
+    } else if (_segments != null) {
+      map.addAll({
+        "segments": _segments?.map((e) => e.toJson()).toList(),
         "size":
             size == null ? null : {"width": size.width, "height": size.height}
       });
@@ -120,7 +185,8 @@ class Video {
 /// Returned if an editor has completed exporting.
 class VideoEditorResult {
   /// Creates a new [VideoEditorResult].
-  VideoEditorResult._(this.video, this.hasChanges, this.serialization);
+  VideoEditorResult._(this.video, this.hasChanges, this.serialization,
+      {this.segments, this.videoSize, required this.release});
 
   /// The source of the edited video.
   final String video;
@@ -139,15 +205,42 @@ class VideoEditorResult {
   /// is set to [SerializationExportType.object].
   final dynamic serialization;
 
+  /// The used input video segments that compose the edited [video].
+  /// Returned if `export.video.segments` of the [Configuration] is
+  /// set to `true`.
+  final List<VideoSegment>? segments;
+
+  /// The size of the **untransformed** video.
+  final Size? videoSize;
+
+  /// Releases the result. Needed if `export.video.segments` of the
+  /// [Configuration] is set to `true`.
+  final VoidCallback release;
+
   /// Creates a [VideoEditorResult] from the [json] map.
-  factory VideoEditorResult._fromJson(Map<String, dynamic> json) =>
-      VideoEditorResult._(
-          json["video"], json["hasChanges"], json["serialization"]);
+  factory VideoEditorResult._fromJson(Map<String, dynamic> json,
+      {required VoidCallback release}) {
+    final serializedSegments = json["segments"] as List<dynamic>?;
+    final deserializedSegments = serializedSegments
+        ?.map((e) => VideoSegment.fromJson(Map<String, dynamic>.from(e)))
+        .toList();
+    final serializedSize = Map<String, dynamic>.from(json["videoSize"]);
+    final deserializedSize =
+        Size(serializedSize?["width"], serializedSize?["height"]);
+
+    return VideoEditorResult._(
+        json["video"], json["hasChanges"], json["serialization"],
+        segments: deserializedSegments,
+        videoSize: deserializedSize,
+        release: release);
+  }
 
   /// Converts the [VideoEditorResult] for JSON parsing.
   Map<String, dynamic> toJson() => {
         "video": video,
         "hasChanges": hasChanges,
-        "serialization": serialization
+        "serialization": serialization,
+        "segments": segments?.map((e) => e.toJson()),
+        "videoSize": {"width": videoSize?.width, "height": videoSize?.height}
       };
 }

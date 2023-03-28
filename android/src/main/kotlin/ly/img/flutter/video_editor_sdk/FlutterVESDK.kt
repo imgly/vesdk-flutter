@@ -5,6 +5,7 @@ import androidx.annotation.NonNull
 import android.content.Intent
 import android.net.Uri
 import android.util.Log
+import androidx.annotation.WorkerThread
 
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.plugin.common.MethodCall
@@ -15,13 +16,18 @@ import ly.img.android.AuthorizationException
 import ly.img.android.IMGLY
 import ly.img.android.VESDK
 import ly.img.android.pesdk.VideoEditorSettingsList
+import ly.img.android.pesdk.backend.decoder.VideoSource
 import ly.img.android.pesdk.backend.model.state.LoadSettings
 import ly.img.android.pesdk.kotlin_extension.continueWithExceptions
 import ly.img.android.pesdk.utils.UriHelper
 import ly.img.android.sdk.config.*
 import ly.img.android.pesdk.backend.encoder.Encoder
 import ly.img.android.pesdk.backend.model.EditorSDKResult
+import ly.img.android.pesdk.backend.model.VideoPart
 import ly.img.android.pesdk.backend.model.state.VideoCompositionSettings
+import ly.img.android.pesdk.backend.model.state.manager.SettingsList
+import ly.img.android.pesdk.backend.model.state.manager.StateHandler
+import ly.img.android.pesdk.ui.activity.VideoEditorActivity
 import ly.img.android.pesdk.utils.ThreadUtils
 import ly.img.android.serializer._3.IMGLYFileWriter
 
@@ -37,7 +43,17 @@ class FlutterVESDK: FlutterIMGLY() {
   companion object {
     // This number must be unique. It is public to allow client code to change it if the same value is used elsewhere.
     var EDITOR_RESULT_ID = 29064
+
+    /** A closure to modify a *VideoEditorSettingsList* before the editor is opened. */
+    var editorWillOpenClosure: ((settingsList: VideoEditorSettingsList) -> Unit)? = null
+
+    /** A closure allowing access to the *StateHandler* before the editor is exporting. */
+    var editorWillExportClosure: ((stateHandler: StateHandler) -> Unit)? = null
   }
+
+  private var resolveManually: Boolean = false
+  private var currentEditorUID: String = UUID.randomUUID().toString()
+  private var settingsLists: MutableMap<String, SettingsList> = mutableMapOf()
 
   override fun onAttachedToEngine(@NonNull binding: FlutterPlugin.FlutterPluginBinding) {
     super.onAttachedToEngine(binding)
@@ -65,6 +81,7 @@ class FlutterVESDK: FlutterIMGLY() {
 
       val video = call.argument<MutableMap<String, Any>>("video")
       if (video != null) {
+        val videoSegments = video["segments"] as ArrayList<*>?
         val videosList = video["videos"] as ArrayList<String>?
         val videoSource = video["video"] as String?
         val size = video["size"] as? MutableMap<String, Double>
@@ -73,9 +90,11 @@ class FlutterVESDK: FlutterIMGLY() {
 
         if (videoSource != null) {
           this.present(videoSource.let { EmbeddedAsset(it).resolvedURI }, config, serialization)
-        } else {
+        } else if (videosList != null) {
           val videos = videosList?.mapNotNull { EmbeddedAsset(it).resolvedURI }
           this.present(videos, config, serialization, size)
+        } else {
+          this.present(videoSegments, config, serialization, size)
         }
       } else {
         result.error("VE.SDK", "The video must not be null", null)
@@ -84,6 +103,14 @@ class FlutterVESDK: FlutterIMGLY() {
       val license = call.argument<String>("license")
       this.result = result
       this.resolveLicense(license)
+    } else if (call.method == "release") {
+      val identifier = call.argument<String>("identifier")
+      if (identifier == null) {
+        result.error("VE.SDK", "The identifier must not be null", null)
+      } else {
+        this.result = result
+        this.releaseTemporaryData(identifier)
+      }
     } else {
       result.notImplemented()
     }
@@ -98,7 +125,12 @@ class FlutterVESDK: FlutterIMGLY() {
    */
   override fun present(asset: String, config: HashMap<String, Any>?, serialization: String?) {
     val configuration = ConfigLoader.readFrom(config ?: mapOf())
-    val settingsList = VideoEditorSettingsList(configuration.export?.serialization?.enabled == true)
+    val serializationEnabled = configuration.export?.serialization?.enabled == true
+    val exportVideoSegments = configuration.export?.video?.segments == true
+    val createTemporaryFiles = serializationEnabled || exportVideoSegments
+    resolveManually = exportVideoSegments
+
+    val settingsList = VideoEditorSettingsList(createTemporaryFiles)
     configuration.applyOn(settingsList)
     currentConfig = configuration
 
@@ -108,41 +140,46 @@ class FlutterVESDK: FlutterIMGLY() {
       }
     }
 
-    applyTheme(settingsList, configuration.theme)
-
+    editorWillOpenClosure?.invoke(settingsList)
     readSerialisation(settingsList, serialization, false)
-    startEditor(settingsList, EDITOR_RESULT_ID)
+    applyTheme(settingsList, configuration.theme)
+    startEditor(settingsList, EDITOR_RESULT_ID, FlutterVESDKActivity::class.java)
   }
 
   /**
    * Configures and presents the editor.
    *
-   * @param videos The video sources as *List<String>* which should be loaded into the editor.
+   * @param videos The video sources as *List<*>* which should be loaded into the editor.
    * @param config The *Configuration* to configure the editor with as if any.
    * @param serialization The serialization to load into the editor if any.
    */
-  private fun present(videos: List<String>?, config: HashMap<String, Any>?, serialization: String?, size: Map<String, Any>?) {
+  private fun present(videos: List<*>?, config: HashMap<String, Any>?, serialization: String?, size: Map<String, Any>?) {
+    val videoArray = deserializeVideoParts(videos)
+    var source = resolveSize(size)
+
     val configuration = ConfigLoader.readFrom(config ?: mapOf())
-    val settingsList = VideoEditorSettingsList(configuration.export?.serialization?.enabled == true)
+    val serializationEnabled = configuration.export?.serialization?.enabled == true
+    val exportVideoSegments = configuration.export?.video?.segments == true
+    val createTemporaryFiles = serializationEnabled || exportVideoSegments
+    resolveManually = exportVideoSegments
+
+    val settingsList = VideoEditorSettingsList(createTemporaryFiles)
     configuration.applyOn(settingsList)
     currentConfig = configuration
 
-    var source = resolveSize(size)
-    if (videos != null && videos.count() > 0) {
+    if (videoArray.isNotEmpty()) {
       if (source == null) {
         if (size != null) {
           result?.error("VE.SDK", "Invalid video size: width and height must be greater than zero.", null)
-          this.result = null
           return
         }
-        val video = videos.first()
-        source = retrieveURI(video)
+        val video = videoArray.first()
+        source = video.videoSource.getSourceAsUri()
       }
 
       settingsList.configure<VideoCompositionSettings> { loadSettings ->
-        videos.forEach {
-          val resolvedSource = retrieveURI(it)
-          loadSettings.addCompositionPart(VideoCompositionSettings.VideoPart(resolvedSource))
+        videoArray.forEach {
+          loadSettings.addCompositionPart(it)
         }
       }
     } else {
@@ -157,10 +194,20 @@ class FlutterVESDK: FlutterIMGLY() {
       it.source = source
     }
 
-    applyTheme(settingsList, configuration.theme)
-
+    editorWillOpenClosure?.invoke(settingsList)
     readSerialisation(settingsList, serialization, false)
-    startEditor(settingsList, EDITOR_RESULT_ID)
+    applyTheme(settingsList, configuration.theme)
+    startEditor(settingsList, EDITOR_RESULT_ID, FlutterVESDKActivity::class.java)
+  }
+
+  private fun releaseTemporaryData(identifier: String) {
+    val settingsList = settingsLists[identifier]
+    if (settingsList != null) {
+      settingsList.release()
+      settingsLists.remove(identifier)
+    }
+    this.result?.success(null)
+    this.result = null
   }
 
   private fun retrieveURI(source: String) : Uri {
@@ -183,6 +230,50 @@ class FlutterVESDK: FlutterIMGLY() {
       return null
     }
     return LoadSettings.compositionSource(width.toInt(), height.toInt(), 60)
+  }
+
+  private fun serializeVideoSegments(settingsList: SettingsList): List<*> {
+    val compositionParts = mutableListOf<MutableMap<String, Any?>>()
+    settingsList[VideoCompositionSettings::class].videos.forEach {
+      val source = it.videoSource.getSourceAsUri().toString()
+      val trimStart = it.trimStartInNano / 1000000000.0f
+      val trimEnd = it.trimEndInNano / 1000000000.0f
+
+      val videoPart = mutableMapOf<String, Any?>(
+        "videoUri" to source,
+        "startTime" to trimStart.toDouble(),
+        "endTime" to trimEnd.toDouble()
+      )
+      compositionParts.add(videoPart)
+    }
+    return compositionParts
+  }
+
+  private fun deserializeVideoParts(videos: List<*>?) : List<VideoPart> {
+    val parts = emptyList<VideoPart>().toMutableList()
+
+    videos?.forEach {
+      if (it is String) {
+        val videoPart = VideoPart(retrieveURI(EmbeddedAsset(it).resolvedURI))
+        parts.add(videoPart)
+      } else if (it is Map<*, *>) {
+        val uri = it["videoUri"] as String?
+        val trimStart = it["startTime"] as Double?
+        val trimEnd = it["endTime"] as Double?
+
+        if (uri != null) {
+          val videoPart = VideoPart(retrieveURI(EmbeddedAsset(uri).resolvedURI))
+          if (trimStart != null) {
+            videoPart.trimStartInNanoseconds = (trimStart * 1000000000.0f).toLong()
+          }
+          if (trimEnd != null) {
+            videoPart.trimEndInNanoseconds = (trimEnd * 1000000000.0f).toLong()
+          }
+          parts.add(videoPart)
+        }
+      }
+    }
+    return parts
   }
 
   /**
@@ -222,8 +313,9 @@ class FlutterVESDK: FlutterIMGLY() {
         val sourceUri = intentData.sourceUri
 
         var serialization: Any? = null
+        val settingsList = intentData.settingsList
+
         if (serializationConfig?.enabled == true) {
-          val settingsList = intentData.settingsList
           skipIfNotExists {
             settingsList.let { settingsList ->
               serialization = when (serializationConfig.exportType) {
@@ -241,23 +333,53 @@ class FlutterVESDK: FlutterIMGLY() {
                 }
               }
             }
-            settingsList.release()
           } ?: run {
             Log.e("IMG.LY SDK", "You need to include 'backend:serializer' Module, to use serialisation!")
           }
+        }
+
+        var segments: List<*>? = null
+        val canvasSize = sourceUri?.let { VideoSource.create(it).fetchFormatInfo()?.size }
+        val sizeMap = mutableMapOf<String, Any>()
+        if (canvasSize != null && canvasSize.height >= 0 && canvasSize.width >= 0) {
+          sizeMap["height"] = canvasSize.height.toDouble()
+          sizeMap["width"] = canvasSize.width.toDouble()
+        }
+
+        if (resolveManually) {
+          settingsLists[currentEditorUID] = settingsList
+          segments = serializeVideoSegments(settingsList)
         }
 
         val map = mutableMapOf<String, Any?>()
         map["video"] = resultUri.toString()
         map["hasChanges"] = (sourceUri?.path != resultUri?.path)
         map["serialization"] = serialization
+        map["segments"] = segments
+        map["identifier"] = currentEditorUID
+        map["videoSize"] = sizeMap
+
         currentActivity?.runOnUiThread {
           this.result?.success(map)
           this.result = null
         }
+        if (!resolveManually) {
+          settingsList.release()
+        }
+        resolveManually = false
       }
       return true
     }
     return false
+  }
+}
+
+/** A *VideoEditorActivity* used for the native interfaces. */
+class FlutterVESDKActivity: VideoEditorActivity() {
+  @WorkerThread
+  override fun onExportStart(stateHandler: StateHandler) {
+    FlutterVESDK.editorWillExportClosure?.invoke(stateHandler)
+
+    super.onExportStart(stateHandler)
   }
 }
