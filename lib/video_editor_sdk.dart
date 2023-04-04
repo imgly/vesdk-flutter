@@ -226,7 +226,7 @@ class VideoEditorResult {
         .toList();
     final serializedSize = Map<String, dynamic>.from(json["videoSize"]);
     final deserializedSize =
-        Size(serializedSize?["width"], serializedSize?["height"]);
+        Size(serializedSize["width"], serializedSize["height"]);
 
     return VideoEditorResult._(
         json["video"], json["hasChanges"], json["serialization"],

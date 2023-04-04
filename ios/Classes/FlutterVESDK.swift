@@ -265,14 +265,14 @@ extension FlutterVESDK {
                     try serializationData.IMGLYwriteToUrl(exportURL, andCreateDirectoryIfNeeded: true)
                     serialization = self.serializationFile?.absoluteString
                 } catch let error {
-                    self.handleError(videoEditViewController, code: "Serialization failed.", message: error.localizedDescription, details: error)
+                  self.handleError(videoEditViewController, code: "Serialization failed.", message: error.localizedDescription, details: error.localizedDescription)
                     return
                 }
             } else if self.serializationType == IMGLYConstants.kExportTypeObject {
                 do {
                     serialization = try JSONSerialization.jsonObject(with: serializationData, options: .init(rawValue: 0))
                 } catch let error {
-                    self.handleError(videoEditViewController, code: "Serialization failed.", message: error.localizedDescription, details: error)
+                  self.handleError(videoEditViewController, code: "Serialization failed.", message: error.localizedDescription, details: error.localizedDescription)
                     return
                 }
             }
@@ -294,7 +294,7 @@ extension FlutterVESDK {
     /// - Parameter videoEditViewController: The `VideoEditViewController` that failed to export the video.
     /// - Parameter error: The `VideoEditorError` that caused the failure.
     public func videoEditViewControllerDidFail(_ videoEditViewController: VideoEditViewController, error: VideoEditorError) {
-        self.handleError(videoEditViewController, code: "Editor failed", message: "The editor did fail to generate the video.", details: error)
+      self.handleError(videoEditViewController, code: "Editor failed", message: "The editor did fail to generate the video.", details: error.localizedDescription)
     }
 
     /// Called if the `VideoEditViewController` was cancelled.
