@@ -40,7 +40,7 @@ public class FlutterVESDK: FlutterIMGLY, FlutterPlugin, VideoEditViewControllerD
         guard let arguments = call.arguments as? IMGLYDictionary else { return }
 
         if self.result != nil {
-            result(FlutterError(code: "Multiple requests.", message: "Cancelled due to multiple requests.", details: nil))
+            result(FlutterError(code: IMGLYConstants.kErrorMultipleRequests, message: "Cancelled due to multiple requests.", details: nil))
             return
         }
 
@@ -84,7 +84,7 @@ public class FlutterVESDK: FlutterIMGLY, FlutterPlugin, VideoEditViewControllerD
                         if valid == true {
                             video = Video(segments: assets)
                         } else {
-                            result(FlutterError(code: "Invalid video size: width and height must be greater than zero.", message: nil, details: nil))
+                            result(FlutterError(code: IMGLYConstants.kErrorUnableToLoad, message: "Invalid video size: width and height must be greater than zero.", details: nil))
                             return
                         }
                     }
@@ -92,7 +92,7 @@ public class FlutterVESDK: FlutterIMGLY, FlutterPlugin, VideoEditViewControllerD
                     if let videoSize = size {
                         video = Video(size: videoSize)
                     } else {
-                        result(FlutterError(code: "A video composition without assets must have a specific size.", message: nil, details: nil))
+                        result(FlutterError(code: IMGLYConstants.kErrorUnableToLoad, message: "A video composition without assets must have a specific size.", details: nil))
                         return
                     }
                 }
@@ -113,7 +113,7 @@ public class FlutterVESDK: FlutterIMGLY, FlutterPlugin, VideoEditViewControllerD
                         if valid == true {
                             video = Video(segments: resolvedSegments)
                         } else {
-                            result(FlutterError(code: "Invalid video size: width and height must be greater than zero.", message: nil, details: nil))
+                            result(FlutterError(code: IMGLYConstants.kErrorUnableToLoad, message: "Invalid video size: width and height must be greater than zero.", details: nil))
                             return
                         }
                     }
@@ -121,7 +121,7 @@ public class FlutterVESDK: FlutterIMGLY, FlutterPlugin, VideoEditViewControllerD
                     if let videoSize = size {
                         video = Video(size: videoSize)
                     } else {
-                        result(FlutterError(code: "A video composition without assets must have a specific size.", message: nil, details: nil))
+                        result(FlutterError(code: IMGLYConstants.kErrorUnableToLoad, message: "A video composition without assets must have a specific size.", details: nil))
                         return
                     }
                 }
@@ -134,13 +134,13 @@ public class FlutterVESDK: FlutterIMGLY, FlutterPlugin, VideoEditViewControllerD
                 video = Video(size: videoSize)
             }
             guard let finalVideo = video else {
-                result(FlutterError(code: "Could not load video.", message: nil, details: nil))
+                result(FlutterError(code: IMGLYConstants.kErrorUnableToLoad, message: "Could not load video.", details: nil))
                 return
             }
 
             self.present(video: finalVideo, configuration: configuration, serialization: serialization)
         } else {
-            result(FlutterError(code: "The video must not be null.", message: nil, details: nil))
+            result(FlutterError(code: IMGLYConstants.kErrorUnableToLoad, message: "The video must not be null.", details: nil))
             return
         }
     }
@@ -185,9 +185,11 @@ public class FlutterVESDK: FlutterIMGLY, FlutterPlugin, VideoEditViewControllerD
         DispatchQueue.main.async {
             do {
                 try VESDK.unlockWithLicense(from: url)
+                self.result?(nil)
                 self.result = nil
             } catch let error {
-                self.handleLicenseError(with: error as NSError)
+                self.result?(FlutterError(code: IMGLYConstants.kErrorUnableToUnlock, message: "Unlocking the SDK failed due to:", details: error.localizedDescription))
+                self.result = nil
             }
         }
     }
@@ -253,26 +255,26 @@ extension FlutterVESDK {
 
         if self.serializationEnabled == true {
             guard let serializationData = videoEditViewController.serializedSettings else {
-                self.handleError(videoEditViewController, code: "Serialization failed.", message: "No serialization data found.", details: nil)
+                self.handleError(videoEditViewController, code: IMGLYConstants.kErrorUnableToExport, message: "No serialization data found.", details: nil)
                 return
             }
             if self.serializationType == IMGLYConstants.kExportTypeFileURL {
                 guard let exportURL = self.serializationFile else {
-                    self.handleError(videoEditViewController, code: "Serialization failed.", message: "The URL must not be nil.", details: nil)
+                    self.handleError(videoEditViewController, code: IMGLYConstants.kErrorUnableToExport, message: "The URL must not be nil.", details: nil)
                     return
                 }
                 do {
                     try serializationData.IMGLYwriteToUrl(exportURL, andCreateDirectoryIfNeeded: true)
                     serialization = self.serializationFile?.absoluteString
                 } catch let error {
-                  self.handleError(videoEditViewController, code: "Serialization failed.", message: error.localizedDescription, details: error.localizedDescription)
+                  self.handleError(videoEditViewController, code: IMGLYConstants.kErrorUnableToExport, message: error.localizedDescription, details: error.localizedDescription)
                     return
                 }
             } else if self.serializationType == IMGLYConstants.kExportTypeObject {
                 do {
                     serialization = try JSONSerialization.jsonObject(with: serializationData, options: .init(rawValue: 0))
                 } catch let error {
-                  self.handleError(videoEditViewController, code: "Serialization failed.", message: error.localizedDescription, details: error.localizedDescription)
+                  self.handleError(videoEditViewController, code: IMGLYConstants.kErrorUnableToExport, message: error.localizedDescription, details: error.localizedDescription)
                     return
                 }
             }
@@ -294,7 +296,7 @@ extension FlutterVESDK {
     /// - Parameter videoEditViewController: The `VideoEditViewController` that failed to export the video.
     /// - Parameter error: The `VideoEditorError` that caused the failure.
     public func videoEditViewControllerDidFail(_ videoEditViewController: VideoEditViewController, error: VideoEditorError) {
-      self.handleError(videoEditViewController, code: "Editor failed", message: "The editor did fail to generate the video.", details: error.localizedDescription)
+      self.handleError(videoEditViewController, code: IMGLYConstants.kErrorUnableToExport, message: "The editor did fail to generate the video.", details: error.localizedDescription)
     }
 
     /// Called if the `VideoEditViewController` was cancelled.

@@ -1,12 +1,12 @@
 PODS:
   - Flutter (1.0.0)
-  - imgly_sdk (2.9.0):
+  - imgly_sdk (3.0.0):
     - Flutter
     - imglyKit (~> 11.4)
   - imglyKit (11.5.1)
-  - video_editor_sdk (2.9.0):
+  - video_editor_sdk (3.0.0):
     - Flutter
-    - imgly_sdk (= 2.9.0)
+    - imgly_sdk (= 3.0.0)
 
 DEPENDENCIES:
   - Flutter (from `Flutter`)
@@ -27,9 +27,9 @@ EXTERNAL SOURCES:
 
 SPEC CHECKSUMS:
   Flutter: f04841e97a9d0b0a8025694d0796dd46242b2854
-  imgly_sdk: a1937f3cd410756297d87d15086a37f24466d288
+  imgly_sdk: a114555e1d98e4a4fa5cc8f2b258353198c64e8b
   imglyKit: b1b3b827799a50b090433ca7c61f90b078944898
-  video_editor_sdk: 2e3a8cbe6f1f09a8e12ba7cbac6f2bd7793bada5
+  video_editor_sdk: f113d4a2fc8838fdeee99a8461fb4c55ba6b9e3f
 
 PODFILE CHECKSUM: ef19549a9bc3046e7bb7d2fab4d021637c0c58a3
 

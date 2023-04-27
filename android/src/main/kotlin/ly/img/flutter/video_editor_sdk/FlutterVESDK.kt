@@ -66,7 +66,7 @@ class FlutterVESDK: FlutterIMGLY() {
 
   override fun onMethodCall(@NonNull call: MethodCall, @NonNull result: Result) {
     if (this.result != null) {
-      result.error("Multiple requests.", "Cancelled due to multiple requests.", null)
+      result.error(IMGLYConstants.K_ERROR_MULTIPLE_REQUESTS, "Cancelled due to multiple requests.", null)
       return
     }
 
@@ -97,7 +97,7 @@ class FlutterVESDK: FlutterIMGLY() {
           this.present(videoSegments, config, serialization, size)
         }
       } else {
-        result.error("VE.SDK", "The video must not be null", null)
+        result.error(IMGLYConstants.K_ERROR_UNABLE_TO_LOAD, "The video must not be null", null)
       }
     } else if (call.method == "unlock") {
       val license = call.argument<String>("license")
@@ -106,7 +106,7 @@ class FlutterVESDK: FlutterIMGLY() {
     } else if (call.method == "release") {
       val identifier = call.argument<String>("identifier")
       if (identifier == null) {
-        result.error("VE.SDK", "The identifier must not be null", null)
+        result.error(IMGLYConstants.K_ERROR_UNABLE_TO_RELEASE, "The identifier must not be null", null)
       } else {
         this.result = result
         this.releaseTemporaryData(identifier)
@@ -170,7 +170,7 @@ class FlutterVESDK: FlutterIMGLY() {
     if (videoArray.isNotEmpty()) {
       if (source == null) {
         if (size != null) {
-          result?.error("VE.SDK", "Invalid video size: width and height must be greater than zero.", null)
+          result?.error(IMGLYConstants.K_ERROR_UNABLE_TO_LOAD, "Invalid video size: width and height must be greater than zero.", null)
           return
         }
         val video = videoArray.first()
@@ -184,7 +184,7 @@ class FlutterVESDK: FlutterIMGLY() {
       }
     } else {
       if (source == null) {
-        result?.error("VE.SDK", "A video composition without assets must have a specific size.", null)
+        result?.error(IMGLYConstants.K_ERROR_UNABLE_TO_LOAD, "A video composition without assets must have a specific size.", null)
         this.result = null
         return
       }
@@ -288,7 +288,7 @@ class FlutterVESDK: FlutterIMGLY() {
       this.result?.success(null)
       this.result = null
     } catch (e: AuthorizationException) {
-      this.result?.error("VE.SDK", "The license is invalid.", e.message)
+      this.result?.error(IMGLYConstants.K_ERROR_UNABLE_TO_UNLOCK, "The license is invalid.", e.message)
       this.result = null
     }
   }
